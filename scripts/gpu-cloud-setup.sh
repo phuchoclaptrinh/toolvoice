@@ -51,8 +51,31 @@ print("available", torch.cuda.is_available())
 print("device", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "CPU")
 PY
 
-pkill -f "uvicorn backend.main:app" || true
-CHATTERBOX_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://n2.ckey.vn:2754,https://n2.ckey.vn:2754" \
+if ps -eo comm=,args= | grep -q '^[[:space:]]*ttyd .* -p 7681'; then
+  for run_file in /etc/services.d/ttyd/run /run/s6/legacy-services/ttyd/run; do
+    if [ -f "$run_file" ]; then
+      sed -i 's/-p "${TTYD_PORT:-768[0-9]}"/-p "7682"/g' "$run_file"
+      sed -i 's/-p "${TTYD_PORT}"/-p "7682"/g' "$run_file"
+    fi
+  done
+  /package/admin/s6/command/s6-svc -t /run/service/ttyd 2>/dev/null || true
+  sleep 2
+  ps -eo pid=,comm= | awk '$2 == "ttyd" {print $1}' | while read -r pid; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  sleep 2
+fi
+
+ps -eo pid=,args= | awk '/uvicorn backend.main:app/ && !/awk/ {print $1}' | while read -r pid; do
+  kill -TERM "$pid" 2>/dev/null || true
+done
+
+PUBLIC_API_ORIGIN=""
+if [ -n "${PUBLIC_IPADDR:-}" ] && [ -n "${VAST_TCP_PORT_7681:-}" ]; then
+  PUBLIC_API_ORIGIN=",http://${PUBLIC_IPADDR}:${VAST_TCP_PORT_7681}"
+fi
+
+CHATTERBOX_CORS_ORIGINS="http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001,http://n2.ckey.vn:2754,https://n2.ckey.vn:2754${PUBLIC_API_ORIGIN}" \
 TTS_MAX_WORKERS="${TTS_MAX_WORKERS:-1}" \
 nohup backend/.venv/bin/python -m uvicorn backend.main:app --host 0.0.0.0 --port 7681 \
   > /root/Toolvoice/backend/gpu-backend.out.log \
