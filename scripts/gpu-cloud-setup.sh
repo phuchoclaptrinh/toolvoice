@@ -14,10 +14,34 @@ python3 -m venv backend/.venv
 source backend/.venv/bin/activate
 python -m pip install --upgrade pip wheel setuptools
 
-python -m pip uninstall -y torch torchaudio torchvision || true
-python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-grep -Ev '^(torch|torchaudio)$' backend/requirements.txt > /tmp/toolvoice-requirements-gpu.txt
+if python - <<'PY'
+import torch
+raise SystemExit(0 if torch.cuda.is_available() else 1)
+PY
+then
+  echo "Existing PyTorch CUDA install is usable."
+else
+  python -m pip uninstall -y torch torchaudio torchvision || true
+  python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+fi
+
+grep -Ev '^(torch|torchaudio|chatterbox-tts)$' backend/requirements.txt > /tmp/toolvoice-requirements-gpu.txt
 python -m pip install -r /tmp/toolvoice-requirements-gpu.txt
+python -m pip install \
+  "numpy>=2.0.0" \
+  "librosa==0.11.0" \
+  "s3tokenizer" \
+  "transformers==5.2.0" \
+  "diffusers==0.29.0" \
+  "resemble-perth>=1.0.0" \
+  "conformer==0.3.2" \
+  "safetensors==0.5.3" \
+  "spacy-pkuseg" \
+  "pykakasi==2.3.0" \
+  "gradio==6.8.0" \
+  "pyloudnorm" \
+  "omegaconf"
+python -m pip install --no-deps chatterbox-tts
 
 python - <<'PY'
 import torch
