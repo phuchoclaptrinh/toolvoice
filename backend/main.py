@@ -511,6 +511,26 @@ def concat_wavs(wavs: list, sample_rate: int):
     return torch.cat(normalized, dim=-1)
 
 
+def save_wav(path: Path, wav: Any, sample_rate: int) -> None:
+    import numpy as np
+    import soundfile as sf
+
+    try:
+        import torch
+
+        if isinstance(wav, torch.Tensor):
+            wav = wav.detach().cpu().float().numpy()
+    except Exception:
+        pass
+
+    audio = np.asarray(wav, dtype=np.float32)
+    if audio.ndim == 2 and audio.shape[0] <= 2:
+        audio = audio.T
+    if audio.ndim == 2 and audio.shape[1] == 1:
+        audio = audio[:, 0]
+    sf.write(str(path), audio, sample_rate)
+
+
 def synthesize_with_chatterbox_fallback(
     text: str,
     audio_prompt: str,
@@ -542,9 +562,7 @@ def synthesize_with_chatterbox_fallback(
     output_name = f"{uuid.uuid4().hex}.wav"
     output_path = OUTPUT_DIR / output_name
 
-    import torchaudio as ta
-
-    ta.save(str(output_path), wav, chatterbox.sr)
+    save_wav(output_path, wav, chatterbox.sr)
     return {
         "audio_url": f"/audio/{output_name}",
         "sample_rate": chatterbox.sr,
@@ -608,9 +626,7 @@ def synthesize_with_turbo_fast(text: str, audio_prompt: str, temperature: float)
     output_name = f"{uuid.uuid4().hex}.wav"
     output_path = OUTPUT_DIR / output_name
 
-    import torchaudio as ta
-
-    ta.save(str(output_path), wav, chatterbox.sr)
+    save_wav(output_path, wav, chatterbox.sr)
     return {
         "audio_url": f"/audio/{output_name}",
         "sample_rate": chatterbox.sr,
@@ -876,9 +892,7 @@ def render_tts_audio(
         output_name = f"{uuid.uuid4().hex}.wav"
         output_path = OUTPUT_DIR / output_name
 
-        import torchaudio as ta
-
-        ta.save(str(output_path), wav, chatterbox.sr)
+        save_wav(output_path, wav, chatterbox.sr)
         return {
             "audio_url": f"/audio/{output_name}",
             "sample_rate": chatterbox.sr,
@@ -914,9 +928,7 @@ def render_tts_audio(
         output_name = f"{uuid.uuid4().hex}.wav"
         output_path = OUTPUT_DIR / output_name
 
-        import torchaudio as ta
-
-        ta.save(str(output_path), wav, chatterbox.sr)
+        save_wav(output_path, wav, chatterbox.sr)
         return {
             "audio_url": f"/audio/{output_name}",
             "sample_rate": chatterbox.sr,
