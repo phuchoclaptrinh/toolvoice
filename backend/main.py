@@ -24,6 +24,7 @@ MAX_TEXT_CHARS = int(os.getenv("MAX_TEXT_CHARS", "12000"))
 CHUNK_TEXT_CHARS = int(os.getenv("CHUNK_TEXT_CHARS", "850"))
 SILENCE_SECONDS_BETWEEN_CHUNKS = float(os.getenv("SILENCE_SECONDS_BETWEEN_CHUNKS", "0.18"))
 TTS_MAX_WORKERS = max(1, int(os.getenv("TTS_MAX_WORKERS", "1")))
+JOB_HISTORY_LIMIT = max(10, int(os.getenv("JOB_HISTORY_LIMIT", "50")))
 ALLOWED_SUFFIXES = {".wav", ".mp3", ".m4a", ".flac", ".ogg"}
 SUPPORTED_LANGUAGE_IDS = {
     "ar",
@@ -159,6 +160,12 @@ def read_job(job_id: str) -> dict[str, Any]:
         if not job:
             raise HTTPException(status_code=404, detail="Khong tim thay job tao voice.")
         return dict(job)
+
+
+def list_recent_jobs() -> list[dict[str, Any]]:
+    with JOBS_LOCK:
+        jobs = sorted(JOBS.values(), key=lambda item: item.get("created_at") or 0, reverse=True)
+        return [dict(job) for job in jobs[:JOB_HISTORY_LIMIT]]
 
 
 def force_torch_float32():
@@ -551,15 +558,52 @@ def synthesize_with_chatterbox_fallback(
 def synthesize_with_turbo_fast(text: str, audio_prompt: str, temperature: float):
     chatterbox = load_model("turbo")
     chunks = split_text(text, max_chars=320)
-    wavs = [
-        generate_turbo_fast_chunk(
-            chatterbox=chatterbox,
-            text=chunk,
-            audio_prompt=audio_prompt,
-            temperature=temperature,
-        )
-        for chunk in chunks
-    ]
+    wavs = []
+    for chunk in chunks:
+        try:
+            wavs.append(
+                generate_chunk(
+                    chatterbox=chatterbox,
+                    model="turbo",
+                    text=chunk,
+                    language_id="en",
+                    audio_prompt=audio_prompt,
+                    kwargs={
+                        "temperature": float(temperature),
+                        "exaggeration": 0.5,
+                        "cfg_weight": 0.5,
+                    },
+                )
+            )
+        except TypeError:
+            wavs.append(
+                generate_chunk(
+                    chatterbox=chatterbox,
+                    model="turbo",
+                    text=chunk,
+                    language_id="en",
+                    audio_prompt=audio_prompt,
+                    kwargs={},
+                )
+            )
+        except Exception as exc:
+            if not is_dtype_mismatch(exc):
+                raise
+            wavs.append(
+                generate_chunk(
+                    chatterbox=load_model("english"),
+                    model="english",
+                    text=chunk,
+                    language_id="en",
+                    audio_prompt=audio_prompt,
+                    kwargs={
+                        "temperature": float(temperature),
+                        "exaggeration": 0.5,
+                        "cfg_weight": 0.5,
+                    },
+                )
+            )
+
     wav = ensure_float32_wav(concat_wavs(wavs, chatterbox.sr))
     output_name = f"{uuid.uuid4().hex}.wav"
     output_path = OUTPUT_DIR / output_name
@@ -996,6 +1040,11 @@ async def create_tts_job(
         float(cfg_weight),
     )
     return read_job(job_id)
+
+
+@app.get("/api/tts/jobs")
+def get_tts_jobs():
+    return {"jobs": list_recent_jobs()}
 
 
 @app.get("/api/tts/jobs/{job_id}")
