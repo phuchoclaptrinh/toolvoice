@@ -16,7 +16,8 @@ python -m pip install --upgrade pip wheel setuptools
 
 python -m pip uninstall -y torch torchaudio torchvision || true
 python -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
-python -m pip install -r backend/requirements.txt
+grep -Ev '^(torch|torchaudio)$' backend/requirements.txt > /tmp/toolvoice-requirements-gpu.txt
+python -m pip install -r /tmp/toolvoice-requirements-gpu.txt
 
 python - <<'PY'
 import torch
