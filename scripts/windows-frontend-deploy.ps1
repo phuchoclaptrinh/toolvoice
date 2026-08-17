@@ -85,7 +85,9 @@ Set-Location "$Repo"
 `$env:CHATTERBOX_CORS_ORIGINS = "$CorsOrigins"
 `$env:TTS_MAX_WORKERS = "1"
 `$env:HF_HUB_DISABLE_SYMLINKS_WARNING = "1"
-& "$PythonExe" -m uvicorn backend.main:app --host 0.0.0.0 --port $BackendPort *> "$Repo\backend\gpu-backend.task.log"
+Start-Transcript -Path "$Repo\backend\gpu-backend.task.log" -Append
+& "$PythonExe" -m uvicorn backend.main:app --host 0.0.0.0 --port $BackendPort
+Stop-Transcript
 "@ | Set-Content -Encoding ASCII $BackendTaskScript
 
   schtasks /Create /TN ToolvoiceBackend /SC ONSTART /TR "powershell -NoProfile -ExecutionPolicy Bypass -File `"$BackendTaskScript`"" /RL HIGHEST /F | Out-Null
